@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+
 	"strings"
 
 	"github.com/ametsuramet/gin_generator/models"
@@ -33,8 +34,16 @@ func Test() string {
 }
 
 func (c *Config) Generate() {
+	fmt.Println(os.Getenv("GOPATH"))
 
 	output, _ := c.Unmarshal()
+
+	//copy config
+	configPath := c.Path + "/config"
+
+	utils.CopyDir(os.Getenv("GOPATH")+"/src/github.com/ametsuramet/gin_generator/config", configPath)
+	utils.CopyFile(os.Getenv("GOPATH")+"/src/github.com/ametsuramet/gin_generator/default.yaml", c.Path+"/default.yaml")
+
 	path := c.Path + "/models"
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		os.Mkdir(path, 0777)
@@ -59,6 +68,9 @@ func (c *Config) Generate() {
 
 	c.createMain(output)
 	c.createRouter(output)
+	c.createBaseModel(output)
+
+	// utils.CopyDir(os.Getenv("GOPATH")+"/src/github.com/ametsuramet/gin_generator/models/Base.go", modelsPath+"/Base.go")
 
 }
 
@@ -78,7 +90,42 @@ func (c *Config) Unmarshal() (result []models.Json, err error) {
 	return result, nil
 
 }
+func (c *Config) createBaseModel(models []models.Json) error {
+	path := c.Path + "/models/Base.go"
+	var _, err = os.Stat(path)
+	segments := strings.Split(c.Path, "/")
+	packageName := segments[len(segments)-1]
+	if os.IsNotExist(err) {
+		var file, err = os.Create(path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+	} else {
+		os.Remove(path)
+		os.Create(path)
+	}
+	var migrateString []string
+	for _, model := range models {
+		migrateString = append(migrateString, "&"+model.Name+"{}")
+	}
+	// open file using READ & WRITE permission
+	file, err := os.OpenFile(path, os.O_RDWR, 0644)
+	defer file.Close()
 
+	file.WriteString("package models\n\n")
+	file.WriteString("import (\n\tcfg \"" + packageName + "/config\"\n\t\"github.com/jinzhu/gorm\"\n\t_ \"github.com/jinzhu/gorm/dialects/mysql\"\n\t\"time\"\n")
+	file.WriteString(")\n\nvar db *gorm.DB\nvar err error\nvar DB = &gorm.DB{}\n")
+	file.WriteString("type BaseModel struct {\n")
+	file.WriteString("\tID\tuint\t`gorm:\"primary_key\" json:\"id\"`\n\tCreatedAt\ttime.Time\t`json:\"created_at\"`\n\tUpdatedAt\ttime.Time\t`json:\"update_at\"`\n\tDeletedAt\t*time.Time\t`sql:\"index\" json:\"deleted_at\"`\n")
+	file.WriteString("}\n")
+	file.WriteString("func Set() {\n")
+	file.WriteString("\tcfg.Init()\n\tdb, _ := gorm.Open(cfg.App.Database.Driver, cfg.App.Database.Uri)\n")
+	file.WriteString("\tDB = db\n")
+	file.WriteString("\tdb.AutoMigrate(" + strings.Join(migrateString, ", "))
+	file.WriteString(")\n}\n")
+	return nil
+}
 func (c *Config) createMain(models []models.Json) error {
 	path := c.Path + "/main.go"
 	var _, err = os.Stat(path)
@@ -90,10 +137,9 @@ func (c *Config) createMain(models []models.Json) error {
 			return err
 		}
 		defer file.Close()
-	}
-	var migrateString []string
-	for _, model := range models {
-		migrateString = append(migrateString, "&models."+model.Name+"{}")
+	} else {
+		os.Remove(path)
+		os.Create(path)
 	}
 
 	fmt.Println("==> done creating file", path)
@@ -105,13 +151,12 @@ func (c *Config) createMain(models []models.Json) error {
 
 	file.WriteString("package main\n\n")
 
-	file.WriteString("import (\n\t\"" + packageName + "/models\"\n\tctrl \"" + packageName + "/controllers\"\n\t\"github.com/jinzhu/gorm\"\n\t_ \"github.com/jinzhu/gorm/dialects/sqlite\"\n\t\"github.com/gin-gonic/gin\"\n\t\"net/http\"\n\t\"os\"\n\t\"os/signal\"\n\t\"fmt\"\n")
+	file.WriteString("import (\n\tmdl \"" + packageName + "/models\"\n\tctrl \"" + packageName + "/controllers\"\n\t\"github.com/gin-gonic/gin\"\n\t\"net/http\"\n\t\"os\"\n\t\"os/signal\"\n\t\"fmt\"\n")
 
-	file.WriteString(")\n\nvar db *gorm.DB\nvar err error\n\n")
+	file.WriteString(")\n\n")
 
-	file.WriteString("func main() {\n\tdb, _ := gorm.Open(\"sqlite3\", \"./gorm.db\")\n\tdefer db.Close()\n")
-
-	file.WriteString("\tdb.AutoMigrate(" + strings.Join(migrateString, ", ") + ")\n")
+	file.WriteString("func init() {\n\tmdl.Set()\n}\n")
+	file.WriteString("func main() {\n")
 	file.WriteString("\tport := os.Getenv(\"PORT\")\n\tif port == \"\" {\n\t\tport = \"7000\"\n\t}\n\tr := setupRouter()\n")
 
 	file.WriteString("\tsrv := &http.Server{\n\t\tAddr:\t\":\" + port,\n\t\tHandler:\tr,\n\t}\n")
@@ -167,6 +212,9 @@ func (c *Config) createRouter(models []models.Json) error {
 
 func (c *Config) createController(model models.Json) error {
 	controllerPath := c.Path + "/controllers/" + model.Name + ".go"
+	segments := strings.Split(c.Path, "/")
+	packageName := segments[len(segments)-1]
+
 	// var strConv utils.StringConv
 	// typeName := strConv.ToCamel(model.Name)
 	//create file
@@ -189,6 +237,75 @@ func (c *Config) createController(model models.Json) error {
 	// write some text line-by-line to file
 
 	file.WriteString("package controllers\n\n\n")
+	file.WriteString("import (\n")
+	file.WriteString("\t\"github.com/gin-gonic/gin\"\n")
+	file.WriteString("\tmdl \"" + packageName + "/models\"\n")
+	file.WriteString("\t\"github.com/gin-gonic/gin/binding\"\n")
+	file.WriteString(")\n\n")
+
+	//write index
+	file.WriteString("func Index" + model.Name + "(c *gin.Context) {\n")
+	// file.WriteString("\tdefer mdl.DB.Close()\n")
+	file.WriteString("\tdata := []mdl." + model.Name + "{}\n")
+	file.WriteString("\tmdl.DB.Find(&data)\n")
+
+	file.WriteString("\tc.JSON(200, gin.H{\n")
+	file.WriteString("\t\t\"message\": \"Index " + model.Name + "\",\n")
+	file.WriteString("\t\t\"data\": data,\n")
+	file.WriteString("\t})\n}\n\n")
+
+	//write show
+	file.WriteString("func Show" + model.Name + "(c *gin.Context) {\n")
+
+	file.WriteString("\tid := c.Params.ByName(\"id\")\n")
+	file.WriteString("\tvar data mdl." + model.Name + "\n")
+	file.WriteString("\tif err := mdl.DB.First(&data, \"id=?\", id); err != nil {\n")
+	file.WriteString("\t\tc.JSON(200, gin.H{\n")
+	file.WriteString("\t\t\t\"message\": \"" + model.Name + " Not Found\",\n")
+	file.WriteString("\t\t})\n")
+	file.WriteString("\t\treturn\n")
+	file.WriteString("\t}\n")
+	file.WriteString("\tc.JSON(200, gin.H{\n")
+	file.WriteString("\t\t\"message\": \"Show " + model.Name + "\",\n")
+	file.WriteString("\t\t\"data\": data,\n")
+	file.WriteString("\t})\n}\n\n")
+
+	//write store
+	file.WriteString("func Store" + model.Name + "(c *gin.Context) {\n")
+	file.WriteString("\tvar input mdl." + model.Name + "\n")
+
+	file.WriteString("\tif c.ShouldBindWith(&input, binding.JSON) == nil {\n")
+	file.WriteString("\t\tmdl.DB.Create(&input)\n")
+	file.WriteString("\t}\n")
+	file.WriteString("\tc.JSON(200, gin.H{\n")
+	file.WriteString("\t\t\"message\": \"Store " + model.Name + "\",\n")
+	file.WriteString("\t\t\"data\": input,\n")
+	file.WriteString("\t})\n}\n\n")
+
+	//write update
+	file.WriteString("func Update" + model.Name + "(c *gin.Context) {\n")
+	file.WriteString("\tid := c.Params.ByName(\"id\")\n")
+	file.WriteString("\tvar data, input mdl." + model.Name + "\n")
+	file.WriteString("\tmdl.DB.First(&data, \"id=?\", id)\n")
+
+	file.WriteString("\tif c.ShouldBindWith(&input, binding.JSON) == nil {\n")
+	file.WriteString("\t\tmdl.DB.Model(&data).Update(&input)\n")
+	file.WriteString("\t}\n")
+	file.WriteString("\tc.JSON(200, gin.H{\n")
+	file.WriteString("\t\t\"message\": \"Update " + model.Name + "\",\n")
+	file.WriteString("\t\t\"data\": input,\n")
+	file.WriteString("\t})\n}\n\n")
+
+	// write delete
+	file.WriteString("func Delete" + model.Name + "(c *gin.Context) {\n")
+	file.WriteString("\tid := c.Params.ByName(\"id\")\n")
+	file.WriteString("\tvar data mdl." + model.Name + "\n")
+	file.WriteString("\tmdl.DB.First(&data, \"id=?\", id)\n")
+	file.WriteString("\tmdl.DB.Delete(&data)\n")
+
+	file.WriteString("\tc.JSON(200, gin.H{\n")
+	file.WriteString("\t\t\"message\": \"Delete " + model.Name + "\",\n")
+	file.WriteString("\t})\n}\n\n")
 
 	return nil
 
@@ -231,13 +348,13 @@ func (c *Config) createModel(model models.Json) error {
 		}
 	}
 
-	file.WriteString("\t\"github.com/jinzhu/gorm\"\n")
+	// file.WriteString("\t\"github.com/jinzhu/gorm\"\n")
 
-	file.WriteString("\t_ \"github.com/jinzhu/gorm/dialects/sqlite\"\n")
+	// file.WriteString("\t_ \"github.com/jinzhu/gorm/dialects/sqlite\"\n")
 
 	file.WriteString(")\n\n")
 	file.WriteString("type " + typeName + " struct {\n")
-	file.WriteString("\tgorm.Model\n")
+	file.WriteString("\tBaseModel\n")
 	// write schema
 	for _, schema := range model.Schema {
 		schemaType := strings.Split(schema.Type, "::")

@@ -1,0 +1,26 @@
+server:
+  mode: "debug"         # possible value: debug, test and release
+  addr: ":8080"         # listen address and port
+  environment: "local"  # possible value: local, staging, demo and production
+  logDuration: 3        # log buffering duration in second
+  shutdownTimeout: 5    # shutdown timeout duration in second
+  baseUrl: "http://localhost:8080"
+  clientUrl: "http://localhost:5000"
+
+database:
+  uri: "root:root@/gin_generator?charset=utf8&parseTime=True&loc=Local"
+  driver: "mysql"
+
+scheduler:
+  emailSendInterval: 1       # value in minute
+  recipientCheckInterval: 1  # value in minute
+  recipientBlockInterval: 20 # value in minute
+
+mailer:
+  server: "smtp.mailtrap.io"
+  port: 2525
+  username: "32e5cd189d6a36"
+  password: "2e5774159fe3e2"
+  useTls: false
+  sender: "support@zaraaya.id"
+  maxAttempt: 5
