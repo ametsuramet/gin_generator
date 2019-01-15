@@ -25,6 +25,7 @@
 > 	gen.Generate()
 > }
 >
+> ```
 > Create file json: generator.go
 > ```json
 >[
