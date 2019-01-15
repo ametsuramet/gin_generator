@@ -33,26 +33,27 @@ Create file json: generator.go
 		"schema": [
 			{
 				"field": "banner",
-				"type": "string",
+				"type": "string"
 			},
 			{
 				"field": "image",
-				"type": "string",
+				"type": "string"
 			},
 			{
 				"field": "who_we_are_image",
-				"type": "string",
+				"type": "string"
 			},
 			{
 				"field": "active_flag",
-				"type": "boolean",
+				"type": "boolean"
 			},
 			{
 				"field": "created_by",
-				"type": "integer::unsigned",
+				"type": "integer::unsigned"
 			},
 			{
 				"field": "updated_by",
+				"type": "integer::unsigned"
 			}
 		]
 	}
