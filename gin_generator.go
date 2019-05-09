@@ -153,13 +153,14 @@ func (c *Config) createMain(models []models.Json) error {
 
 	file.WriteString("import (\n\tmdl \"" + packageName + "/models\"\n\tctrl \"" + packageName + "/controllers\"\n\t\"github.com/gin-gonic/gin\"\n\t\"net/http\"\n\t\"os\"\n\t\"os/signal\"\n\t\"fmt\"\n")
 
+	file.WriteString("\tcfg \"nodeflux-dashboard-client/config\"\n")
 	file.WriteString(")\n\n")
 
-	file.WriteString("func init() {\n\tmdl.Set()\n}\n")
+	file.WriteString("func init() {\n\tmdl.Set()\n\tcfg.Init()\n}\n")
 	file.WriteString("func main() {\n")
-	file.WriteString("\tport := os.Getenv(\"PORT\")\n\tif port == \"\" {\n\t\tport = \"7000\"\n\t}\n\tr := setupRouter()\n")
+	file.WriteString("\tr := setupRouter()\n")
 
-	file.WriteString("\tsrv := &http.Server{\n\t\tAddr:\t\":\" + port,\n\t\tHandler:\tr,\n\t}\n")
+	file.WriteString("\tsrv := &http.Server{\n\t\tAddr:\tcfg.App.Server.Addr,\n\t\tHandler:\tr,\n\t}\n")
 
 	file.WriteString("\tgo func() {\n\t\tif err := srv.ListenAndServe(); err != nil {\n\t\t\tpanic(fmt.Errorf(\"Fatal error failed to start server: %s\", err))\n\t\t}\n\t}()\n")
 	file.WriteString("\tquit := make(chan os.Signal)\n\tsignal.Notify(quit, os.Interrupt)\n\t<-quit\n}\n\n")
